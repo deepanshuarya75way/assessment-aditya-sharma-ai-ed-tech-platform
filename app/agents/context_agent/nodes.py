@@ -10,7 +10,10 @@ from .prompts import (
 from .schemas import RetrieveDecision, QueryBreakdown, Answer
 from typing import Literal
 from langchain.messages import AIMessage
-from app.retriever.retriever import get_retriever
+from app.retriever.hybrid_retrieval import ensemble_retriever, get_retriever, RETRIEVERS, deduplicate_docs
+
+
+print(RETRIEVERS)
 
 
 def rewrite_query(state: State):
@@ -46,8 +49,12 @@ def route_after_decide(state: State) -> Literal["generate_direct", "retrieve"]:
 def retrieval(state: State):
     question = state.get("rewrite_query")
     id = state.get("id")
-    retriever = get_retriever(id=id)
+
+    retriever = get_retriever(id)
+
     docs = retriever.invoke(question)
+
+    docs = deduplicate_docs(docs)
     return {"retrieved_docs": docs}
 
 def generate_headings(state: State):

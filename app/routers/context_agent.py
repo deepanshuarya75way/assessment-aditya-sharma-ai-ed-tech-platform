@@ -8,20 +8,12 @@ from dotenv import load_dotenv
 from fastapi.concurrency import run_in_threadpool
 from core.chat_history_db import chat_sessions, messages
 from app.agents.context_agent.graph import agent
+from ..retriever.hybrid_retrieval import ensemble_retriever, register_retriever
+from ..retriever.process_docs import process_document
+import asyncio
 
 load_dotenv()
 
-from app.load_documents.text_splitting import text_splitter
-from app.vector_store.vector_store import upsert_chunks
-from docling.document_converter import DocumentConverter
-from langchain_core.documents import Document
-from langchain_community.document_loaders import PyMuPDFLoader
-
-try:
-    converter = DocumentConverter()
-except Exception as e:
-    converter = None
-    print(f"Failed to initialize DocumentConverter: {e}")
 
 UPLOAD_DIR = Path(__file__).resolve().parents[1] / "load_documents" / "uploads"
 
@@ -29,43 +21,6 @@ router = APIRouter(
     prefix="/rag-agent",
     tags=["/"],
 )
-
-
-def process_document(file_path_str: str, current_user: int, filename: str):
-    ext = Path(file_path_str).suffix.lower()
-    
-    if ext == ".pdf":
-        loader = PyMuPDFLoader(file_path_str)
-        docs = loader.load()
-        markdown = "\n\n".join([d.page_content for d in docs])
-    else:
-        if not converter:
-            raise RuntimeError("DocumentConverter is not initialized")
-        
-        result = converter.convert(file_path_str)
-        markdown = result.document.export_to_markdown()
-
-    if not markdown.strip():
-        raise ValueError("Uploaded document did not contain readable text")
-
-    doc = Document(
-        page_content=markdown,
-        metadata={
-            "id": current_user,
-            "source": filename,
-            "title": filename
-        }
-    )
-
-    chunks = text_splitter.split_documents([doc])
-
-    if not chunks:
-        raise ValueError("No text chunks were created from this document")
-
-    num_vectors = upsert_chunks(chunks, current_user=current_user, filename=filename)
-
-    return len(chunks), num_vectors
-
 
 @router.post("/upload")
 async def upload(
@@ -88,27 +43,26 @@ async def upload(
             while chunk := await file.read(1024 * 1024):
                 f.write(chunk)
 
-        try:
-            num_chunks, num_vectors = await run_in_threadpool(
-                process_document,
-                str(file_path),
-                current_user,
-                file.filename
-            )
 
-            return {
-                "message": "Uploaded successfully",
-                "chunks": num_chunks,
-                "vectors": num_vectors
+        
+        chunks = await asyncio.to_thread(
+            process_document, str(file_path), current_user,
+            file.filename
+        )
+
+        retriever = ensemble_retriever(chunks)
+
+        register_retriever(current_user, retriever)
+        return {
+            'message': 'Documents uploaded'
             }
-
-        except ValueError as e:
+    except ValueError as e:
             raise HTTPException(
                 status_code=400,
                 detail=str(e)
             )
 
-        except Exception as e:
+    except Exception as e:
             raise HTTPException(
                 status_code=500,
                 detail=f"Document processing failed: {str(e)}"

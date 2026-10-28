@@ -1,6 +1,10 @@
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 class JWTSettings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int
     SECRET_KEY: str
@@ -58,7 +62,7 @@ class LLMSettings(BaseSettings):
     EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
     RERANKER_MODEL_NAME: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
-    GROQ_API_KEY: str
+    GROQ_API_KEY: str = ""
 
     class Config:
         env_file = ".env"
