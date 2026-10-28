@@ -10,7 +10,7 @@ from .prompts import (
 from .schemas import RetrieveDecision, QueryBreakdown, Answer
 from typing import Literal
 from langchain.messages import AIMessage
-from app.retriever.hybrid_retrieval import ensemble_retriever, get_retriever, RETRIEVERS, deduplicate_docs
+from app.retriever.hybrid_retrieval import ensemble_retriever, get_retriever, RETRIEVERS, deduplicate_docs, reranking
 
 
 print(RETRIEVERS)
@@ -55,7 +55,19 @@ def retrieval(state: State):
     docs = retriever.invoke(question)
 
     docs = deduplicate_docs(docs)
+
+
+
+
+    '''
+    with TOP_K =5 we will make sure that only 5 final docs are provided to the LLM
+    '''
+    TOP_K = 5
+
+    docs = reranking(question, docs, TOP_K)
     return {"retrieved_docs": docs}
+
+
 
 def generate_headings(state: State):
     question = state.get("rewrite_query")

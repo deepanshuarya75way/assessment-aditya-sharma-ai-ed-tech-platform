@@ -4,12 +4,15 @@ import threading
 from langchain_core.documents import Document
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_huggingface import HuggingFaceEmbeddings
+from sentence_transformers import CrossEncoder
 
 EMBEDDING_MODEL_NAME: str = "sentence-transformers/all-MiniLM-L6-v2"
+RERANKER_MODEL_NAME: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 embed_model = HuggingFaceEmbeddings(
   model_name =  "sentence-transformers/all-MiniLM-L6-v2"
 )
+reranker = CrossEncoder(RERANKER_MODEL_NAME)
 
 from .process_docs import process_document
 
@@ -76,3 +79,19 @@ def deduplicate_docs(docs):
   return unique_docs
 
 
+def reranking(question, docs, top_k):
+
+  if not docs:
+    return docs
+
+  pairs = [(question, doc.page_content) for doc in docs]
+
+  scores = reranker.predict(pairs)
+
+  scored = list(zip(docs,scores))
+
+  scored.sort(key=lambda x: x[1], reverse = True)
+
+  relevant_docs = [doc for doc, score in scored[:top_k]]
+
+  return relevant_docs
